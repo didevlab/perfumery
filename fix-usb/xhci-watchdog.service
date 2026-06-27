@@ -1,0 +1,12 @@
+[Unit]
+Description=xHCI wedge watchdog - auto-reset the USB controller without rebooting
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/xhci-watchdog.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

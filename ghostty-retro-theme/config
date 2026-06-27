@@ -1,0 +1,20 @@
+# Ghostty — retro CRT / futuristic / paper look
+# Managed by the `retro-theme` command. Change the theme/effect through it.
+
+# Font size (default ~12)
+font-size = 16
+
+# Theme (change with: retro-theme "<name>")
+theme = Retro
+
+# Screen effect (change with: retro-theme fx crt|glow|off)
+custom-shader = shaders/crt.glsl
+custom-shader-animation = true
+
+# Old-terminal-style cursor
+cursor-style = block
+cursor-style-blink = true
+
+# Optional transparency/blur (uncomment if you like it)
+# background-opacity = 0.95
+# background-blur = true

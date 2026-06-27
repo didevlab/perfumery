@@ -1,0 +1,10 @@
+# OS / editor
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Local backups created by installers
+*.bak
+*.bak.*
+config.bak.*
