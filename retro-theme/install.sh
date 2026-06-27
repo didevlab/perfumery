@@ -98,10 +98,18 @@ elif [[ -f "$ZSHRC" || "${SHELL:-}" == *zsh ]]; then
   printf '\n' >> "$ZSHRC"; cat "$tmp" >> "$ZSHRC"; rm -f "$tmp"
 fi
 
-# 6. PATH check
+# 6. ensure ~/.local/bin is on PATH (add to the shell rc if missing)
 case ":$PATH:" in
   *":$BIN_DIR:"*) : ;;
-  *) warn "$BIN_DIR is not in PATH. Add it: export PATH=\"$BIN_DIR:\$PATH\"" ;;
+  *)
+    line='export PATH="$HOME/.local/bin:$PATH"'
+    for rc in "$ZSHRC" "$HOME/.bashrc" "$HOME/.profile"; do
+      [[ -f "$rc" ]] || continue
+      grep -qF "$line" "$rc" || { printf '\n%s\n' "$line" >> "$rc"; say "Added ~/.local/bin to PATH in $rc"; }
+    done
+    export PATH="$BIN_DIR:$PATH"
+    warn "PATH updated — open a new terminal or run: source ~/.zshrc"
+    ;;
 esac
 
 # 7. dependencies — jq is required for the Windows Terminal adapter (WSL)
