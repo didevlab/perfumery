@@ -103,7 +103,7 @@ works both from a checkout and as a remote one-liner.
 ./install.sh
 
 # Or remotely (reads the same scripts from the repo):
-# curl -fsSL https://raw.githubusercontent.com/didevlab/perfumery/main/fix-usb/install.sh | bash
+# wget -qO- https://raw.githubusercontent.com/didevlab/perfumery/main/fix-usb/install.sh | bash
 # Expected (truncated):
 # ==> Detected xHCI controller: 0000:00:14.0
 # ==> Installing daemon to /usr/local/bin and systemd (needs sudo)

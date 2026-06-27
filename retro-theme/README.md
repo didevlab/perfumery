@@ -68,7 +68,7 @@ original target) is not installed.
 
 ```bash
 # Remote one-liner
-curl -fsSL https://raw.githubusercontent.com/didevlab/perfumery/main/retro-theme/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/didevlab/perfumery/main/retro-theme/install.sh | bash
 
 # …or from a checkout
 ./install.sh

@@ -22,15 +22,45 @@ THEMES="amber dracula gruvbox-dark gruvbox-light nord retro-green solarized-ligh
 say()  { printf '\033[1;32m==>\033[0m %s\n' "$1"; }
 warn() { printf '\033[1;33m[!]\033[0m %s\n' "$1"; }
 
-# Copy an asset from the local checkout, or download it when piped via curl.
+# Download a URL using whichever of curl/wget is available.
+download() {
+  local url="$1" out="$2"
+  if command -v curl >/dev/null 2>&1; then curl -fsSL "$url" -o "$out"
+  elif command -v wget >/dev/null 2>&1; then wget -qO "$out" "$url"
+  else warn "neither curl nor wget found — cannot download $url"; return 1; fi
+}
+
+# Copy an asset from the local checkout, or download it when run remotely.
 fetch() {
   local rel="$1" dest="$2"
   if [[ -n "$SRC" && -f "$SRC/$rel" ]]; then
     cp "$SRC/$rel" "$dest"
   else
-    curl -fsSL "$REPO_RAW/$rel" -o "$dest"
+    download "$REPO_RAW/$rel" "$dest"
   fi
 }
+
+# Install a package via the detected package manager (best effort, needs sudo).
+pm_install() {
+  local pkg="$1"
+  if   command -v apt-get >/dev/null 2>&1; then sudo apt-get update -qq && sudo apt-get install -y "$pkg"
+  elif command -v dnf     >/dev/null 2>&1; then sudo dnf install -y "$pkg"
+  elif command -v yum     >/dev/null 2>&1; then sudo yum install -y "$pkg"
+  elif command -v pacman  >/dev/null 2>&1; then sudo pacman -Sy --noconfirm "$pkg"
+  elif command -v zypper  >/dev/null 2>&1; then sudo zypper install -y "$pkg"
+  elif command -v brew    >/dev/null 2>&1; then brew install "$pkg"
+  else return 1; fi
+}
+
+# Ensure a command exists, installing its package if missing. ensure_cmd <cmd> <pkg>
+ensure_cmd() {
+  command -v "$1" >/dev/null 2>&1 && return 0
+  warn "$1 not found — attempting to install '$2'..."
+  pm_install "$2" >/dev/null 2>&1 && say "installed $2" || warn "could not auto-install $2 — install it manually"
+}
+
+# Are we on WSL (where Windows Terminal + jq matter)?
+is_wsl() { grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null || [[ -n "${WT_SESSION:-}" ]] || compgen -G '/mnt/c/Users/*' >/dev/null 2>&1; }
 
 # 1. retro-theme command
 say "Installing the retro-theme command into $BIN_DIR/"
@@ -74,8 +104,12 @@ case ":$PATH:" in
   *) warn "$BIN_DIR is not in PATH. Add it: export PATH=\"$BIN_DIR:\$PATH\"" ;;
 esac
 
-# 7. dependency hints
-command -v jq >/dev/null 2>&1 || warn "jq not found — needed for Windows Terminal support (apt install jq)."
+# 7. dependencies — jq is required for the Windows Terminal adapter (WSL)
+if is_wsl; then
+  ensure_cmd jq jq
+else
+  command -v jq >/dev/null 2>&1 || warn "jq not found — install it if you plan to theme Windows Terminal."
+fi
 
 say "Done!"
 echo

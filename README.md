@@ -24,14 +24,16 @@ need — there is nothing to install at the repo level.
 
 ```bash
 # fix-usb — auto-recovery daemon for a wedged USB controller
-curl -fsSL https://raw.githubusercontent.com/didevlab/perfumery/main/fix-usb/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/didevlab/perfumery/main/fix-usb/install.sh | bash
 
 # retro-theme — terminal-agnostic retro/CRT theme switcher
-curl -fsSL https://raw.githubusercontent.com/didevlab/perfumery/main/retro-theme/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/didevlab/perfumery/main/retro-theme/install.sh | bash
 ```
 
-Each installer also works from a checkout (`./install.sh`). See each recipe's
-README for details.
+> Prefer `curl`? Swap `wget -qO-` for `curl -fsSL`. The installers themselves use
+> whichever of `curl`/`wget` is available and auto-install missing dependencies
+> (e.g. `jq` for Windows Terminal). Each installer also works from a checkout
+> (`./install.sh`). See each recipe's README for details.
 
 ## Layout
 

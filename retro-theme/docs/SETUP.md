@@ -53,7 +53,7 @@ home directory. It is idempotent and backs up an existing Ghostty config.
 ### Option A — Remote one-liner
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/didevlab/perfumery/main/retro-theme/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/didevlab/perfumery/main/retro-theme/install.sh | bash
 ```
 
 ### Option B — From a checkout

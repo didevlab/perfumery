@@ -45,7 +45,7 @@ port supplies only 500 mA total).
 Install the auto-recovery daemon in one line (auto-detects your xHCI PCI address):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/didevlab/perfumery/main/fix-usb/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/didevlab/perfumery/main/fix-usb/install.sh | bash
 ```
 
 Or from a checkout:

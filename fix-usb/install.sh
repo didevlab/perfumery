@@ -16,6 +16,14 @@ TMP=""
 say()  { printf '\033[1;32m==>\033[0m %s\n' "$1"; }
 warn() { printf '\033[1;33m[!]\033[0m %s\n' "$1"; }
 
+# Download a URL using whichever of curl/wget is available.
+download() {
+  local url="$1" out="$2"
+  if command -v curl >/dev/null 2>&1; then curl -fsSL "$url" -o "$out"
+  elif command -v wget >/dev/null 2>&1; then wget -qO "$out" "$url"
+  else warn "neither curl nor wget found — cannot download $url"; return 1; fi
+}
+
 # Resolve the two assets either locally (checkout) or by downloading them.
 fetch() {
   local name="$1" dest="$2"
@@ -23,7 +31,7 @@ fetch() {
     cp "$SRC/$name" "$dest"
   else
     say "Downloading $name"
-    curl -fsSL "$REPO_RAW/$name" -o "$dest"
+    download "$REPO_RAW/$name" "$dest"
   fi
 }
 
