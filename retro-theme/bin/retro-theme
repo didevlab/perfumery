@@ -12,6 +12,8 @@
 #   retro-theme <name> --all    # apply to every terminal found on this machine
 #   retro-theme -l              # list bundled themes
 #   retro-theme --detect        # show which terminal was detected
+#   retro-theme --set-default [name]  # set the default Windows Terminal profile
+#                                     # (defaults to the current WSL distro)
 #   retro-theme fx crt|glow|off # set screen effect (Ghostty / Windows Terminal)
 set -euo pipefail
 
@@ -240,6 +242,26 @@ set_fx_ghostty() {
   esac
 }
 
+# Set the default Windows Terminal profile (defaults to the current WSL distro).
+set_default_wt() {
+  command -v jq >/dev/null 2>&1 || { warn "jq required (apt install jq)"; return 1; }
+  local f="" g name="${1:-${WSL_DISTRO_NAME:-}}" guid
+  for g in /mnt/c/Users/*/AppData/Local/Packages/Microsoft.WindowsTerminal*/LocalState/settings.json \
+           /mnt/c/Users/*/AppData/Local/Microsoft/"Windows Terminal"/settings.json; do
+    [[ -f "$g" ]] && { f="$g"; break; }
+  done
+  [[ -n "$f" ]] || { warn "Windows Terminal settings.json not found under /mnt/c"; return 1; }
+  if [[ -n "$name" ]]; then
+    guid=$(jq -r --arg n "$name" '((.profiles.list // .profiles)[]) | select((.name//"")|test($n;"i")) | .guid' "$f" | head -1)
+  fi
+  [[ -n "${guid:-}" && "$guid" != null ]] || \
+    guid=$(jq -r '((.profiles.list // .profiles)[]) | select((.source//"")|test("Wsl")) | .guid' "$f" | head -1)
+  [[ -n "${guid:-}" && "$guid" != null ]] || { warn "no matching profile; try: retro-theme --set-default \"<profile name>\""; return 1; }
+  local tmp="$f.tmp.$$"
+  jq --arg g "$guid" '.defaultProfile=$g' "$f" > "$tmp" && mv "$tmp" "$f"
+  say "Windows Terminal: default profile set to '${name:-WSL}' ($guid). Reopen Windows Terminal."
+}
+
 # =========================================================================
 # CLI
 # =========================================================================
@@ -247,6 +269,10 @@ cmd="${1:-}"
 
 if [[ "$cmd" == "--detect" ]]; then
   t=$(detect_terminals); echo "Detected: ${t:-none}"; exit 0
+fi
+
+if [[ "$cmd" == "--set-default" ]]; then
+  set_default_wt "${2:-}"; exit $?
 fi
 
 if [[ "$cmd" == "-l" ]]; then

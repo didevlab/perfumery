@@ -7,7 +7,7 @@ autoload -Uz compinit 2>/dev/null && compinit -C 2>/dev/null
 _retro_theme() {
   local -a themes opts fx
   if (( CURRENT == 2 )); then
-    opts=('fx:set screen effect' '-l:list bundled themes' '--all:apply to every terminal' '--detect:show detected terminal')
+    opts=('fx:set screen effect' '-l:list bundled themes' '--all:apply to every terminal' '--detect:show detected terminal' '--set-default:set default Windows Terminal profile')
     _describe -t cmds 'command' opts
     # bundled theme names (slug + display name)
     themes=(${(f)"$(retro-theme -l 2>/dev/null | sed -E 's/ *\[[^]]*\]$//; s/ +$//')"})
