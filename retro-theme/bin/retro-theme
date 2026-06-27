@@ -1,0 +1,300 @@
+#!/usr/bin/env bash
+# retro-theme — terminal-agnostic theme/effect switcher.
+#
+# Detects the terminal you are running in and applies a bundled color theme to it.
+# Supports: Ghostty, Windows Terminal (WSL), GNOME Terminal, Terminator, kitty,
+# Alacritty, WezTerm, iTerm2. The CRT/glow screen effect is applied where the
+# terminal supports it (Ghostty shaders, Windows Terminal retro effect).
+#
+# Usage:
+#   retro-theme                 # interactive menu
+#   retro-theme <name>          # apply a theme to the detected terminal(s)
+#   retro-theme <name> --all    # apply to every terminal found on this machine
+#   retro-theme -l              # list bundled themes
+#   retro-theme --detect        # show which terminal was detected
+#   retro-theme fx crt|glow|off # set screen effect (Ghostty / Windows Terminal)
+set -euo pipefail
+
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo .)"
+
+# --- locate bundled assets (checkout layout or installed layout) ---
+THEMES_DIR=""
+for d in "${RETRO_THEME_HOME:-}" "$SELF/../themes" "$HOME/.config/retro-theme/themes"; do
+  [[ -n "$d" && -d "$d" ]] && { THEMES_DIR="$d"; break; }
+done
+SHADERS_DIR=""
+for d in "$SELF/../shaders" "$HOME/.config/ghostty/shaders"; do
+  [[ -d "$d" ]] && { SHADERS_DIR="$d"; break; }
+done
+[[ -n "$THEMES_DIR" ]] || { echo "themes dir not found (set RETRO_THEME_HOME)" >&2; exit 1; }
+
+say()  { printf '\033[1;32m==>\033[0m %s\n' "$1"; }
+warn() { printf '\033[1;33m[!]\033[0m %s\n' "$1"; }
+
+# --- theme file helpers ---
+tget() { grep -E "^$2=" "$1" 2>/dev/null | head -1 | cut -d= -f2-; }
+theme_file() {                      # resolve a name (or slug) to a .conf path
+  local q="$1" f
+  for f in "$THEMES_DIR"/*.conf; do
+    [[ "$(tget "$f" name)" == "$q" || "$(basename "$f" .conf)" == "$q" ]] && { echo "$f"; return 0; }
+  done
+  return 1
+}
+palette_of() {                      # echo space-separated color0..color15
+  local f="$1" i out=""
+  for i in $(seq 0 15); do out+="$(tget "$f" "color$i") "; done
+  echo "$out"
+}
+
+# --- terminal detection (env-based) ---
+detect_terminals() {
+  local found=()
+  [[ "${TERM_PROGRAM:-}" == ghostty || "${TERM:-}" == xterm-ghostty ]] && found+=(ghostty)
+  [[ -n "${WT_SESSION:-}" ]] && found+=(windows-terminal)
+  [[ -n "${GNOME_TERMINAL_SCREEN:-}" ]] && found+=(gnome-terminal)
+  [[ -n "${TERMINATOR_UUID:-}" ]] && found+=(terminator)
+  [[ -n "${KITTY_WINDOW_ID:-}" || "${TERM:-}" == xterm-kitty ]] && found+=(kitty)
+  [[ -n "${ALACRITTY_WINDOW_ID:-}" || -n "${ALACRITTY_SOCKET:-}" || "${TERM:-}" == alacritty ]] && found+=(alacritty)
+  [[ -n "${WEZTERM_PANE:-}" || "${TERM_PROGRAM:-}" == WezTerm ]] && found+=(wezterm)
+  [[ "${TERM_PROGRAM:-}" == iTerm.app ]] && found+=(iterm2)
+  printf '%s\n' "${found[@]}"
+}
+
+# --- color helpers (hex #rrggbb -> 0..1 float channels, for iTerm2) ---
+hexr() { awk "BEGIN{printf \"%.4f\", $((16#${1:1:2}))/255}"; }
+hexg() { awk "BEGIN{printf \"%.4f\", $((16#${1:3:2}))/255}"; }
+hexb() { awk "BEGIN{printf \"%.4f\", $((16#${1:5:2}))/255}"; }
+
+# =========================================================================
+# Adapters — one per terminal. Each reads the theme file path from $TF.
+# =========================================================================
+
+apply_ghostty() {
+  local cfg="$HOME/.config/ghostty/config" i
+  mkdir -p "$(dirname "$cfg")"; touch "$cfg"
+  sed -i -E '/^[[:space:]]*(theme|background|foreground|cursor-color|palette)[[:space:]]*=/d' "$cfg"
+  { echo "background = $(tget "$TF" background)"
+    echo "foreground = $(tget "$TF" foreground)"
+    echo "cursor-color = $(tget "$TF" cursor)"
+    for i in $(seq 0 15); do echo "palette = $i=$(tget "$TF" "color$i")"; done
+  } >> "$cfg"
+  say "Ghostty: colors written to $cfg (reload: Ctrl+Shift+,)"
+}
+
+apply_terminator() {
+  local cfg="$HOME/.config/terminator/config" fg bg cur pal
+  [[ -f "$cfg" ]] || { warn "Terminator: no $cfg, skipping"; return 0; }
+  fg=$(tget "$TF" foreground); bg=$(tget "$TF" background); cur=$(tget "$TF" cursor)
+  pal=$(palette_of "$TF" | tr ' ' ':' | sed 's/:*$//')
+  local tmp="$cfg.tmp.$$"
+  awk -v fg="$fg" -v bg="$bg" -v cur="$cur" -v pal="$pal" '
+    function k(){printf "    use_theme_colors = False\n    foreground_color = \"%s\"\n    background_color = \"%s\"\n    cursor_color = \"%s\"\n    palette = \"%s\"\n",fg,bg,cur,pal}
+    /^[[:space:]]*\[\[default\]\]/{i=1;print;next}
+    {if(i&&($0~/^[[:space:]]*\[\[/||$0~/^\[[^[]/)){if(!d){k();d=1}i=0;print;next}
+     if(i){if($0~/^[[:space:]]*(use_theme_colors|foreground_color|background_color|cursor_color|palette)[[:space:]]*=/)next;print;next}print}
+    END{if(i&&!d)k()}' "$cfg" > "$tmp" && mv "$tmp" "$cfg"
+  say "Terminator: palette synced to $cfg (open a new window)"
+}
+
+apply_gnome_terminal() {
+  command -v gsettings >/dev/null 2>&1 || { warn "GNOME Terminal: gsettings not found"; return 0; }
+  local prof base i pal=""
+  prof=$(gsettings get org.gnome.Terminal.ProfilesList default 2>/dev/null | tr -d "'") || true
+  [[ -n "$prof" ]] || { warn "GNOME Terminal: no default profile"; return 0; }
+  base="org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$prof/"
+  for i in $(seq 0 15); do pal+="'$(tget "$TF" color$i)', "; done; pal="[${pal%, }]"
+  gsettings set "$base" use-theme-colors false
+  gsettings set "$base" background-color "$(tget "$TF" background)"
+  gsettings set "$base" foreground-color "$(tget "$TF" foreground)"
+  gsettings set "$base" palette "$pal"
+  gsettings set "$base" cursor-colors-set true
+  gsettings set "$base" cursor-background-color "$(tget "$TF" cursor)" 2>/dev/null || true
+  say "GNOME Terminal: applied to default profile"
+}
+
+apply_windows_terminal() {
+  command -v jq >/dev/null 2>&1 || { warn "Windows Terminal: jq required (apt install jq)"; return 0; }
+  local f="" name retro=false g
+  name=$(tget "$TF" name)
+  for g in /mnt/c/Users/*/AppData/Local/Packages/Microsoft.WindowsTerminal*/LocalState/settings.json \
+           /mnt/c/Users/*/AppData/Local/Microsoft/"Windows Terminal"/settings.json; do
+    [[ -f "$g" ]] && { f="$g"; break; }
+  done
+  [[ -n "$f" ]] || { warn "Windows Terminal: settings.json not found under /mnt/c"; return 0; }
+  [[ "${FX_MODE:-}" == crt ]] && retro=true
+  local scheme
+  scheme=$(jq -n \
+    --arg name "$name" --arg bg "$(tget "$TF" background)" --arg fg "$(tget "$TF" foreground)" \
+    --arg cur "$(tget "$TF" cursor)" \
+    --arg c0 "$(tget "$TF" color0)" --arg c1 "$(tget "$TF" color1)" --arg c2 "$(tget "$TF" color2)" \
+    --arg c3 "$(tget "$TF" color3)" --arg c4 "$(tget "$TF" color4)" --arg c5 "$(tget "$TF" color5)" \
+    --arg c6 "$(tget "$TF" color6)" --arg c7 "$(tget "$TF" color7)" --arg c8 "$(tget "$TF" color8)" \
+    --arg c9 "$(tget "$TF" color9)" --arg c10 "$(tget "$TF" color10)" --arg c11 "$(tget "$TF" color11)" \
+    --arg c12 "$(tget "$TF" color12)" --arg c13 "$(tget "$TF" color13)" --arg c14 "$(tget "$TF" color14)" \
+    --arg c15 "$(tget "$TF" color15)" '{
+      name:$name, background:$bg, foreground:$fg, cursorColor:$cur, selectionBackground:$c8,
+      black:$c0,red:$c1,green:$c2,yellow:$c3,blue:$c4,purple:$c5,cyan:$c6,white:$c7,
+      brightBlack:$c8,brightRed:$c9,brightGreen:$c10,brightYellow:$c11,brightBlue:$c12,
+      brightPurple:$c13,brightCyan:$c14,brightWhite:$c15 }')
+  local tmp="$f.tmp.$$"
+  jq --argjson s "$scheme" --arg name "$name" --argjson retro "$retro" '
+    .schemes = ((.schemes // []) | map(select(.name != $name)) + [$s])
+    | .profiles.defaults.colorScheme = $name
+    | .profiles.defaults.experimental.retroTerminalEffect = $retro
+  ' "$f" > "$tmp" && mv "$tmp" "$f"
+  say "Windows Terminal: scheme '$name' applied (retro effect: $retro)"
+}
+
+apply_kitty() {
+  local dir="$HOME/.config/kitty"; local inc="$dir/retro-theme.conf" main="$dir/kitty.conf" i
+  mkdir -p "$dir"
+  { echo "# generated by retro-theme"
+    echo "background $(tget "$TF" background)"
+    echo "foreground $(tget "$TF" foreground)"
+    echo "cursor $(tget "$TF" cursor)"
+    for i in $(seq 0 15); do echo "color$i $(tget "$TF" color$i)"; done
+  } > "$inc"
+  touch "$main"
+  grep -qF "include retro-theme.conf" "$main" || echo "include retro-theme.conf" >> "$main"
+  say "kitty: colors written to $inc (reload: Ctrl+Shift+F5)"
+}
+
+apply_alacritty() {
+  local dir="$HOME/.config/alacritty"; local inc="$dir/retro-theme.toml" main
+  mkdir -p "$dir"
+  { echo "# generated by retro-theme"
+    echo "[colors.primary]"
+    echo "background = \"$(tget "$TF" background)\""
+    echo "foreground = \"$(tget "$TF" foreground)\""
+    echo "[colors.cursor]"
+    echo "cursor = \"$(tget "$TF" cursor)\""
+    echo "[colors.normal]"
+    echo "black = \"$(tget "$TF" color0)\""; echo "red = \"$(tget "$TF" color1)\""
+    echo "green = \"$(tget "$TF" color2)\""; echo "yellow = \"$(tget "$TF" color3)\""
+    echo "blue = \"$(tget "$TF" color4)\""; echo "magenta = \"$(tget "$TF" color5)\""
+    echo "cyan = \"$(tget "$TF" color6)\""; echo "white = \"$(tget "$TF" color7)\""
+    echo "[colors.bright]"
+    echo "black = \"$(tget "$TF" color8)\""; echo "red = \"$(tget "$TF" color9)\""
+    echo "green = \"$(tget "$TF" color10)\""; echo "yellow = \"$(tget "$TF" color11)\""
+    echo "blue = \"$(tget "$TF" color12)\""; echo "magenta = \"$(tget "$TF" color13)\""
+    echo "cyan = \"$(tget "$TF" color14)\""; echo "white = \"$(tget "$TF" color15)\""
+  } > "$inc"
+  main="$dir/alacritty.toml"; touch "$main"
+  grep -qF 'retro-theme.toml' "$main" || sed -i "1i import = [\"~/.config/alacritty/retro-theme.toml\"]" "$main"
+  say "Alacritty: colors written to $inc"
+}
+
+apply_wezterm() {
+  local dir="$HOME/.config/wezterm/colors" f i
+  mkdir -p "$dir"
+  f="$dir/$(basename "$TF" .conf).toml"
+  { echo "[colors]"
+    echo "background = \"$(tget "$TF" background)\""
+    echo "foreground = \"$(tget "$TF" foreground)\""
+    echo "cursor_bg = \"$(tget "$TF" cursor)\""
+    echo "cursor_border = \"$(tget "$TF" cursor)\""
+    printf 'ansi = ['; for i in 0 1 2 3 4 5 6 7; do printf '"%s",' "$(tget "$TF" color$i)"; done; echo ']'
+    printf 'brights = ['; for i in 8 9 10 11 12 13 14 15; do printf '"%s",' "$(tget "$TF" color$i)"; done; echo ']'
+  } > "$f"
+  say "WezTerm: scheme written to $f — set color_scheme=\"$(basename "$TF" .conf)\" in wezterm.lua"
+}
+
+apply_iterm2() {
+  local dir="$HOME/Library/Application Support/iTerm2/DynamicProfiles" f name i body bg fg cur
+  name=$(tget "$TF" name)
+  mkdir -p "$dir" 2>/dev/null || { warn "iTerm2: profile dir unavailable (not macOS?)"; return 0; }
+  f="$dir/retro-theme.json"
+  ansi_block() { printf '"Ansi %s Color":{"Red Component":%s,"Green Component":%s,"Blue Component":%s,"Color Space":"sRGB"}' "$1" "$(hexr "$2")" "$(hexg "$2")" "$(hexb "$2")"; }
+  bg=$(tget "$TF" background); fg=$(tget "$TF" foreground); cur=$(tget "$TF" cursor)
+  body=""; for i in $(seq 0 15); do body+="$(ansi_block "$i" "$(tget "$TF" color$i)"),"; done
+  cat > "$f" <<JSON
+{ "Profiles": [ {
+  "Name": "retro-theme ($name)",
+  "Guid": "retro-theme-$(basename "$TF" .conf)",
+  $body
+  "Background Color":{"Red Component":$(hexr "$bg"),"Green Component":$(hexg "$bg"),"Blue Component":$(hexb "$bg"),"Color Space":"sRGB"},
+  "Foreground Color":{"Red Component":$(hexr "$fg"),"Green Component":$(hexg "$fg"),"Blue Component":$(hexb "$fg"),"Color Space":"sRGB"},
+  "Cursor Color":{"Red Component":$(hexr "$cur"),"Green Component":$(hexg "$cur"),"Blue Component":$(hexb "$cur"),"Color Space":"sRGB"}
+} ] }
+JSON
+  say "iTerm2: dynamic profile written to $f (pick profile 'retro-theme ($name)')"
+}
+
+apply_to() { TF="$1"; case "$2" in
+  ghostty) apply_ghostty;; windows-terminal) apply_windows_terminal;;
+  gnome-terminal) apply_gnome_terminal;; terminator) apply_terminator;;
+  kitty) apply_kitty;; alacritty) apply_alacritty;; wezterm) apply_wezterm;;
+  iterm2) apply_iterm2;; *) warn "unknown terminal: $2";; esac; }
+
+# --- ghostty screen effect (independent of theme) ---
+set_fx_ghostty() {
+  local cfg="$HOME/.config/ghostty/config"
+  mkdir -p "$(dirname "$cfg")"; touch "$cfg"
+  sed -i -E '/^[[:space:]]*#?[[:space:]]*custom-shader[[:space:]]*=/d' "$cfg"
+  case "$1" in
+    crt)  echo "custom-shader = ${SHADERS_DIR:-shaders}/crt.glsl"  >> "$cfg";;
+    glow) echo "custom-shader = ${SHADERS_DIR:-shaders}/glow.glsl" >> "$cfg";;
+    off)  : ;;
+  esac
+}
+
+# =========================================================================
+# CLI
+# =========================================================================
+cmd="${1:-}"
+
+if [[ "$cmd" == "--detect" ]]; then
+  t=$(detect_terminals); echo "Detected: ${t:-none}"; exit 0
+fi
+
+if [[ "$cmd" == "-l" ]]; then
+  for f in "$THEMES_DIR"/*.conf; do printf '%-18s [%s]\n' "$(tget "$f" name)" "$(tget "$f" group)"; done
+  exit 0
+fi
+
+if [[ "$cmd" == "fx" ]]; then
+  mode="${2:-}"
+  [[ "$mode" =~ ^(crt|glow|off)$ ]] || { echo "usage: retro-theme fx crt|glow|off" >&2; exit 1; }
+  export FX_MODE="$mode"
+  mapfile -t terms < <(detect_terminals)
+  for t in "${terms[@]:-}"; do
+    case "$t" in
+      ghostty) set_fx_ghostty "$mode"; say "Ghostty: effect=$mode (reload: Ctrl+Shift+,)";;
+      windows-terminal) warn "Windows Terminal: re-apply a theme to toggle the retro effect (fx=$mode honored on apply)";;
+      "") : ;;
+      *) warn "$t: screen effects not supported (colors only)";;
+    esac
+  done
+  [[ -n "${terms[*]:-}" ]] || warn "no supported terminal detected for fx"
+  exit 0
+fi
+
+apply_theme_cli() {
+  local tf="$1" scope="$2" t
+  local targets=()
+  if [[ "$scope" == "--all" ]]; then
+    targets=(ghostty windows-terminal gnome-terminal terminator kitty alacritty wezterm iterm2)
+  else
+    mapfile -t targets < <(detect_terminals)
+    [[ -n "${targets[*]:-}" ]] || { warn "no terminal detected; use '<name> --all' or run inside a supported terminal"; exit 1; }
+  fi
+  export FX_MODE="${FX_MODE:-$(tget "$tf" fx)}"
+  say "Applying '$(tget "$tf" name)' to: ${targets[*]}"
+  for t in "${targets[@]}"; do [[ -n "$t" ]] && apply_to "$tf" "$t"; done
+  if printf '%s\n' "${targets[@]}" | grep -qx ghostty; then set_fx_ghostty "$FX_MODE"; fi
+}
+
+if [[ -n "$cmd" && "$cmd" != "-"* ]]; then
+  tf=$(theme_file "$cmd") || { echo "theme not found: $cmd (try: retro-theme -l)" >&2; exit 1; }
+  apply_theme_cli "$tf" "${2:-}"
+  exit 0
+fi
+
+# interactive menu
+echo "Bundled themes:"
+mapfile -t files < <(ls "$THEMES_DIR"/*.conf)
+i=1; for f in "${files[@]}"; do printf "  %2d) %-18s [%s]\n" "$i" "$(tget "$f" name)" "$(tget "$f" group)"; i=$((i+1)); done
+echo "Detected terminal: $(detect_terminals | tr '\n' ' ')"
+read -rp "Choose [1-${#files[@]}]: " n
+[[ "$n" =~ ^[0-9]+$ ]] && (( n>=1 && n<=${#files[@]} )) || { echo "invalid" >&2; exit 1; }
+apply_theme_cli "${files[$((n-1))]}" ""

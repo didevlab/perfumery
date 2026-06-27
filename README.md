@@ -18,7 +18,7 @@ need — there is nothing to install at the repo level.
 | Recipe | What it solves |
 |--------|----------------|
 | **[fix-usb](fix-usb/)** | USB freezes at runtime (Intel xHCI controller wedge). Resets the controller automatically — no reboot. |
-| **[ghostty-retro-theme](ghostty-retro-theme/)** | A CRT/retro look for the [Ghostty](https://ghostty.org) terminal (shaders + a theme switcher), with optional color sync to Terminator. |
+| **[retro-theme](retro-theme/)** | A retro/CRT look for your terminal — **detects the terminal you're in and applies the theme automatically**. Works with Ghostty, Windows Terminal (WSL), GNOME Terminal, Terminator, kitty, Alacritty, WezTerm and iTerm2. |
 
 ## One-line install
 
@@ -26,8 +26,8 @@ need — there is nothing to install at the repo level.
 # fix-usb — auto-recovery daemon for a wedged USB controller
 curl -fsSL https://raw.githubusercontent.com/didevlab/perfumery/main/fix-usb/install.sh | bash
 
-# ghostty-retro-theme — CRT theme + switcher for Ghostty
-curl -fsSL https://raw.githubusercontent.com/didevlab/perfumery/main/ghostty-retro-theme/install.sh | bash
+# retro-theme — terminal-agnostic retro/CRT theme switcher
+curl -fsSL https://raw.githubusercontent.com/didevlab/perfumery/main/retro-theme/install.sh | bash
 ```
 
 Each installer also works from a checkout (`./install.sh`). See each recipe's
@@ -42,10 +42,11 @@ perfumery/
 │   ├── xhci-watchdog.sh    # systemd daemon: auto-reset on wedge
 │   ├── xhci-watchdog.service
 │   └── docs/               # SETUP + TECHNICAL
-└── ghostty-retro-theme/    # Retro CRT theme + theme switcher for Ghostty
+└── retro-theme/            # Terminal-agnostic retro/CRT theme switcher
     ├── install.sh          # One-command installer
-    ├── bin/retro-theme     # Theme + screen-effect switcher
-    ├── shaders/            # CRT and neon-glow GLSL shaders
+    ├── bin/retro-theme     # Detects the terminal and applies the theme
+    ├── themes/             # Bundled color palettes (.conf)
+    ├── shaders/            # CRT and neon-glow GLSL shaders (Ghostty)
     ├── config              # Ghostty config template
     ├── zshrc-snippet.zsh   # Alias + zsh completion
     └── docs/               # SETUP + TECHNICAL
