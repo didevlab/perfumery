@@ -50,7 +50,9 @@ palette_of() {                      # echo space-separated color0..color15
 detect_terminals() {
   local found=()
   [[ "${TERM_PROGRAM:-}" == ghostty || "${TERM:-}" == xterm-ghostty ]] && found+=(ghostty)
-  [[ -n "${WT_SESSION:-}" ]] && found+=(windows-terminal)
+  # Windows Terminal: $WT_SESSION when present, but WSL usually doesn't inherit it,
+  # so treat any WSL session as Windows Terminal (the relevant target from WSL).
+  { [[ -n "${WT_SESSION:-}" ]] || grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; } && found+=(windows-terminal)
   [[ -n "${GNOME_TERMINAL_SCREEN:-}" ]] && found+=(gnome-terminal)
   [[ -n "${TERMINATOR_UUID:-}" ]] && found+=(terminator)
   [[ -n "${KITTY_WINDOW_ID:-}" || "${TERM:-}" == xterm-kitty ]] && found+=(kitty)
