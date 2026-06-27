@@ -7,7 +7,7 @@
 [![Bash](https://img.shields.io/badge/bash-5.0+-4EAA25.svg?logo=gnubash&logoColor=white)](https://www.gnu.org/software/bash/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](../LICENSE)
 [![Terminals](https://img.shields.io/badge/terminals-8-blue.svg)]()
-[![Themes](https://img.shields.io/badge/themes-8-orange.svg)]()
+[![Themes](https://img.shields.io/badge/themes-24-orange.svg)]()
 
 </div>
 
@@ -29,10 +29,11 @@ original target) is not installed.
 - **8 terminals supported**, each themed through its own native config:
   Ghostty, Windows Terminal (WSL), GNOME Terminal, Terminator, kitty,
   Alacritty, WezTerm, iTerm2.
-- **Screen effects where possible**: real CRT/scanline + neon glow via GLSL
-  shaders on Ghostty; the built-in `retroTerminalEffect` on Windows Terminal.
-  Other terminals get the colors only.
-- **8 bundled palettes** across 3 groups (`retro`, `futuristic`, `paper`).
+- **Real CRT + neon-glow shaders** on both Ghostty (GLSL) and Windows Terminal
+  (HLSL `pixelShaderPath`): curvature, scanlines, vignette and bloom. Windows
+  Terminal falls back to the built-in `retroTerminalEffect` if the HLSL shader
+  can't be installed. Other terminals get the colors only.
+- **24 bundled palettes** across 3 groups (`retro`, `futuristic`, `paper`).
 - **Apply everywhere at once** with `--all` — theme every supported terminal
   found on the machine in one shot.
 - **Zero terminal lock-in**: palettes are simple `.conf` files; add your own by
@@ -48,7 +49,7 @@ original target) is not installed.
 | Engine           | Bash 5 (`bin/retro-theme`)                              |
 | Palettes         | Plain `key=value` `.conf` files (`themes/*.conf`)       |
 | Ghostty effects  | GLSL fragment shaders (`shaders/{crt,glow}.glsl`)       |
-| Windows Terminal | `jq` patching `settings.json`                           |
+| Windows Terminal | `jq` patching `settings.json` + HLSL `pixelShaderPath` (`shaders/{crt,glow}.hlsl`) |
 | GNOME Terminal   | `gsettings` (dconf)                                     |
 | Terminator       | `awk` patching `~/.config/terminator/config`            |
 | Installer        | Bash + `curl` (`install.sh`)                            |
@@ -95,8 +96,9 @@ retro-theme tokyo-night          # …or by slug (the .conf filename)
 retro-theme dracula --all        # apply to EVERY supported terminal found
 retro-theme -l                   # list bundled themes
 retro-theme --detect             # show which terminal was detected
+retro-theme --set-default        # set Windows Terminal default profile to this WSL distro
 retro-theme fx crt               # set screen effect (Ghostty / Windows Terminal)
-retro-theme fx glow              # neon glow (Ghostty only)
+retro-theme fx glow              # neon glow (Ghostty / Windows Terminal)
 retro-theme fx off               # remove the effect
 rt nord                          # the rt alias works everywhere
 ```
@@ -108,21 +110,40 @@ rt nord                          # the rt alias works everywhere
 | `retro-theme <name> --all` | Apply to every supported terminal on the machine |
 | `retro-theme -l` | List bundled themes with their group |
 | `retro-theme --detect` | Print the detected terminal(s) |
-| `retro-theme fx crt\|glow\|off` | Set/clear the screen effect |
+| `retro-theme --set-default [name]` | Set the Windows Terminal default profile (defaults to the current WSL distro) |
+| `retro-theme fx crt\|glow\|off` | Set/clear the screen effect (Ghostty / Windows Terminal) |
 
 ---
 
 ## Bundled Themes
 
+24 palettes across 3 groups (`retro`, `futuristic`, `paper`):
+
 | Theme | Slug | Group | Default effect |
 |-------|------|-------|:--------------:|
 | Retro Green | `retro-green` | `retro` | `crt` |
 | Amber CRT | `amber` | `retro` | `crt` |
+| Ayu Dark | `ayu-dark` | `futuristic` | `glow` |
+| Catppuccin Mocha | `catppuccin-mocha` | `futuristic` | `glow` |
+| Cyberpunk Neon | `cyberpunk-neon` | `futuristic` | `glow` |
 | Dracula | `dracula` | `futuristic` | `glow` |
-| Nord | `nord` | `futuristic` | `glow` |
-| Tokyo Night | `tokyo-night` | `futuristic` | `glow` |
+| Everforest Dark | `everforest-dark` | `futuristic` | `off` |
 | Gruvbox Dark | `gruvbox-dark` | `futuristic` | `off` |
+| Gruvbox Material Dark | `gruvbox-material-dark` | `futuristic` | `off` |
+| Kanagawa | `kanagawa` | `futuristic` | `glow` |
+| Monokai | `monokai` | `futuristic` | `glow` |
+| Night Owl | `night-owl` | `futuristic` | `glow` |
+| Nord | `nord` | `futuristic` | `glow` |
+| One Dark | `one-dark` | `futuristic` | `glow` |
+| Rosé Pine | `rose-pine` | `futuristic` | `glow` |
+| Solarized Dark | `solarized-dark` | `futuristic` | `off` |
+| SynthWave '84 | `synthwave-84` | `futuristic` | `glow` |
+| Tokyo Night | `tokyo-night` | `futuristic` | `glow` |
+| Ayu Light | `ayu-light` | `paper` | `off` |
+| Catppuccin Latte | `catppuccin-latte` | `paper` | `off` |
+| GitHub Light | `github-light` | `paper` | `off` |
 | Gruvbox Light | `gruvbox-light` | `paper` | `off` |
+| Rosé Pine Dawn | `rose-pine-dawn` | `paper` | `off` |
 | Solarized Light | `solarized-light` | `paper` | `off` |
 
 The "default effect" is the `fx=` field in each theme file. It is used as the
@@ -136,7 +157,7 @@ override it with `retro-theme fx …`.
 | Terminal | Colors | Screen effect | How it's applied |
 |----------|:------:|:-------------:|------------------|
 | Ghostty | yes | CRT + glow (GLSL) | writes `~/.config/ghostty/config` + `custom-shader` |
-| Windows Terminal (WSL) | yes | CRT (`retroTerminalEffect`) | `jq`-patches the Windows-side `settings.json` |
+| Windows Terminal (WSL) | yes | CRT + glow (HLSL) | `jq`-patches `settings.json`, installs an HLSL shader + sets `pixelShaderPath` (falls back to `retroTerminalEffect`) |
 | GNOME Terminal | yes | — | `gsettings` on the default profile |
 | Terminator | yes | — | `awk`-patches `~/.config/terminator/config` |
 | kitty | yes | — | writes `~/.config/kitty/retro-theme.conf` + `include` |
@@ -144,8 +165,9 @@ override it with `retro-theme fx …`.
 | WezTerm | yes | — | writes `~/.config/wezterm/colors/<slug>.toml` |
 | iTerm2 (macOS) | yes | — | writes a Dynamic Profile JSON |
 
-> The CRT/glow **screen effect** only exists on Ghostty (real GLSL shaders) and
-> Windows Terminal (its built-in retro effect). Every other terminal gets the
+> The CRT/glow **screen effect** exists on Ghostty (real GLSL shaders) and
+> Windows Terminal (real HLSL shaders via `pixelShaderPath`, with the built-in
+> `retroTerminalEffect` as a `crt` fallback). Every other terminal gets the
 > colors only.
 
 ---
@@ -187,18 +209,36 @@ See [docs/TECHNICAL.md](docs/TECHNICAL.md) for the full breakdown.
 retro-theme/
 ├── bin/
 │   └── retro-theme          # the engine + one adapter per terminal
-├── themes/                  # bundled palettes (key=value .conf files)
-│   ├── retro-green.conf
-│   ├── amber.conf
+├── themes/                  # 24 bundled palettes (key=value .conf files)
+│   ├── retro-green.conf     # group: retro
+│   ├── amber.conf           # group: retro
+│   ├── ayu-dark.conf        # group: futuristic
+│   ├── catppuccin-mocha.conf
+│   ├── cyberpunk-neon.conf
 │   ├── dracula.conf
-│   ├── nord.conf
-│   ├── tokyo-night.conf
+│   ├── everforest-dark.conf
 │   ├── gruvbox-dark.conf
+│   ├── gruvbox-material-dark.conf
+│   ├── kanagawa.conf
+│   ├── monokai.conf
+│   ├── night-owl.conf
+│   ├── nord.conf
+│   ├── one-dark.conf
+│   ├── rose-pine.conf
+│   ├── solarized-dark.conf
+│   ├── synthwave-84.conf
+│   ├── tokyo-night.conf
+│   ├── ayu-light.conf       # group: paper
+│   ├── catppuccin-latte.conf
+│   ├── github-light.conf
 │   ├── gruvbox-light.conf
+│   ├── rose-pine-dawn.conf
 │   └── solarized-light.conf
-├── shaders/                 # Ghostty-only GLSL screen effects
-│   ├── crt.glsl             # curvature + scanlines + vignette
-│   └── glow.glsl            # neon bloom
+├── shaders/                 # screen effects: GLSL (Ghostty) + HLSL (Windows Terminal)
+│   ├── crt.glsl             # Ghostty: curvature + scanlines + vignette
+│   ├── glow.glsl            # Ghostty: neon bloom
+│   ├── crt.hlsl             # Windows Terminal: curvature + scanlines + vignette
+│   └── glow.hlsl            # Windows Terminal: neon bloom
 ├── config                   # optional sample Ghostty config
 ├── zshrc-snippet.zsh        # rt alias + zsh completion
 ├── install.sh               # installer (local or curl|bash)

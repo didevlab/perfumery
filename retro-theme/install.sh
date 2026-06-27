@@ -17,7 +17,7 @@ RT_DIR="$HOME/.config/retro-theme"
 BIN_DIR="$HOME/.local/bin"
 ZSHRC="$HOME/.zshrc"
 MARK="# === retro-theme: alias + autocomplete ==="
-THEMES="amber dracula gruvbox-dark gruvbox-light nord retro-green solarized-light tokyo-night"
+THEMES="amber ayu-dark ayu-light catppuccin-latte catppuccin-mocha cyberpunk-neon dracula everforest-dark github-light gruvbox-dark gruvbox-light gruvbox-material-dark kanagawa monokai night-owl nord one-dark retro-green rose-pine rose-pine-dawn solarized-dark solarized-light synthwave-84 tokyo-night"
 
 say()  { printf '\033[1;32m==>\033[0m %s\n' "$1"; }
 warn() { printf '\033[1;33m[!]\033[0m %s\n' "$1"; }
@@ -73,11 +73,13 @@ say "Installing themes into $RT_DIR/themes/"
 mkdir -p "$RT_DIR/themes"
 for t in $THEMES; do fetch "themes/$t.conf" "$RT_DIR/themes/$t.conf"; done
 
-# 3. shaders (used by the Ghostty CRT/glow effect)
+# 3. shaders — GLSL for Ghostty, HLSL for Windows Terminal
 say "Installing shaders into $GHOSTTY_DIR/shaders/"
 mkdir -p "$GHOSTTY_DIR/shaders"
 fetch "shaders/crt.glsl"  "$GHOSTTY_DIR/shaders/crt.glsl"
 fetch "shaders/glow.glsl" "$GHOSTTY_DIR/shaders/glow.glsl"
+fetch "shaders/crt.hlsl"  "$GHOSTTY_DIR/shaders/crt.hlsl"
+fetch "shaders/glow.hlsl" "$GHOSTTY_DIR/shaders/glow.hlsl"
 
 # 4. optional Ghostty config (only if Ghostty is installed)
 if command -v ghostty >/dev/null 2>&1; then

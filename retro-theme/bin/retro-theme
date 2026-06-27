@@ -125,7 +125,20 @@ apply_windows_terminal() {
     [[ -f "$g" ]] && { f="$g"; break; }
   done
   [[ -n "$f" ]] || { warn "Windows Terminal: settings.json not found under /mnt/c"; return 0; }
-  [[ "${FX_MODE:-}" == crt ]] && retro=true
+
+  # --- screen effect: prefer a custom HLSL shader (rich CRT/glow), like Ghostty ---
+  local wtdir shader="" winshader="" fxmode="${FX_MODE:-}"
+  wtdir="$(dirname "$f")"
+  if [[ "$fxmode" == crt || "$fxmode" == glow ]]; then
+    local src="${SHADERS_DIR:-}/$fxmode.hlsl"
+    if [[ -f "$src" ]] && command -v wslpath >/dev/null 2>&1; then
+      cp "$src" "$wtdir/retro-shader.hlsl"
+      winshader="$(wslpath -w "$wtdir/retro-shader.hlsl")"   # C:\...\retro-shader.hlsl
+    else
+      [[ "$fxmode" == crt ]] && retro=true   # fallback to the built-in retro effect
+    fi
+  fi
+
   local scheme
   scheme=$(jq -n \
     --arg name "$name" --arg bg "$(tget "$TF" background)" --arg fg "$(tget "$TF" foreground)" \
@@ -141,12 +154,18 @@ apply_windows_terminal() {
       brightBlack:$c8,brightRed:$c9,brightGreen:$c10,brightYellow:$c11,brightBlue:$c12,
       brightPurple:$c13,brightCyan:$c14,brightWhite:$c15 }')
   local tmp="$f.tmp.$$"
-  jq --argjson s "$scheme" --arg name "$name" --argjson retro "$retro" '
+  jq --argjson s "$scheme" --arg name "$name" --argjson retro "$retro" --arg shader "$winshader" '
     .schemes = ((.schemes // []) | map(select(.name != $name)) + [$s])
     | .profiles.defaults.colorScheme = $name
     | .profiles.defaults.experimental.retroTerminalEffect = $retro
+    | if $shader == "" then .profiles.defaults.experimental |= (del(.pixelShaderPath))
+      else .profiles.defaults.experimental.pixelShaderPath = $shader end
   ' "$f" > "$tmp" && mv "$tmp" "$f"
-  say "Windows Terminal: scheme '$name' applied (retro effect: $retro)"
+  if [[ -n "$winshader" ]]; then
+    say "Windows Terminal: scheme '$name' + $fxmode HLSL shader applied"
+  else
+    say "Windows Terminal: scheme '$name' applied (retro effect: $retro)"
+  fi
 }
 
 apply_kitty() {
@@ -230,6 +249,31 @@ apply_to() { TF="$1"; case "$2" in
   kitty) apply_kitty;; alacritty) apply_alacritty;; wezterm) apply_wezterm;;
   iterm2) apply_iterm2;; *) warn "unknown terminal: $2";; esac; }
 
+# --- Windows Terminal screen effect (independent of theme) ---
+set_fx_wt() {
+  command -v jq >/dev/null 2>&1 || { warn "Windows Terminal: jq required (apt install jq)"; return 0; }
+  local f="" g winshader="" retro=false mode="$1" wtdir
+  for g in /mnt/c/Users/*/AppData/Local/Packages/Microsoft.WindowsTerminal*/LocalState/settings.json \
+           /mnt/c/Users/*/AppData/Local/Microsoft/"Windows Terminal"/settings.json; do
+    [[ -f "$g" ]] && { f="$g"; break; }
+  done
+  [[ -n "$f" ]] || { warn "Windows Terminal: settings.json not found under /mnt/c"; return 0; }
+  wtdir="$(dirname "$f")"
+  if [[ "$mode" == crt || "$mode" == glow ]]; then
+    local src="${SHADERS_DIR:-}/$mode.hlsl"
+    if [[ -f "$src" ]] && command -v wslpath >/dev/null 2>&1; then
+      cp "$src" "$wtdir/retro-shader.hlsl"; winshader="$(wslpath -w "$wtdir/retro-shader.hlsl")"
+    elif [[ "$mode" == crt ]]; then retro=true; fi
+  fi
+  local tmp="$f.tmp.$$"
+  jq --argjson retro "$retro" --arg shader "$winshader" '
+    .profiles.defaults.experimental.retroTerminalEffect = $retro
+    | if $shader == "" then .profiles.defaults.experimental |= (del(.pixelShaderPath))
+      else .profiles.defaults.experimental.pixelShaderPath = $shader end
+  ' "$f" > "$tmp" && mv "$tmp" "$f"
+  say "Windows Terminal: effect=$mode (reopen the tab)"
+}
+
 # --- ghostty screen effect (independent of theme) ---
 set_fx_ghostty() {
   local cfg="$HOME/.config/ghostty/config"
@@ -288,7 +332,7 @@ if [[ "$cmd" == "fx" ]]; then
   for t in "${terms[@]:-}"; do
     case "$t" in
       ghostty) set_fx_ghostty "$mode"; say "Ghostty: effect=$mode (reload: Ctrl+Shift+,)";;
-      windows-terminal) warn "Windows Terminal: re-apply a theme to toggle the retro effect (fx=$mode honored on apply)";;
+      windows-terminal) set_fx_wt "$mode";;
       "") : ;;
       *) warn "$t: screen effects not supported (colors only)";;
     esac

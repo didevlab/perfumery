@@ -21,7 +21,9 @@ Detailed architecture, components, data flow, and extension points for
 ## 1. Overview
 
 `retro-theme` is one Bash script (`bin/retro-theme`) plus a folder of palette
-files (`themes/*.conf`) and two Ghostty GLSL shaders (`shaders/*.glsl`).
+files (`themes/*.conf`) and the screen-effect shaders: GLSL for Ghostty
+(`shaders/{crt,glow}.glsl`) and HLSL for Windows Terminal
+(`shaders/{crt,glow}.hlsl`).
 
 The flow is always the same: **detect** which terminal you're in → **read** a
 palette file → **dispatch** to the adapter for that terminal → the adapter
@@ -32,8 +34,9 @@ them.
 | Component | Technology | File |
 |-----------|------------|------|
 | Engine + adapters | Bash 5 | `bin/retro-theme` |
-| Palettes | `key=value` text | `themes/*.conf` |
-| Screen effects | GLSL (Shadertoy-style) | `shaders/crt.glsl`, `shaders/glow.glsl` |
+| Palettes | `key=value` text | `themes/*.conf` (24 themes) |
+| Screen effects (Ghostty) | GLSL (Shadertoy-style) | `shaders/crt.glsl`, `shaders/glow.glsl` |
+| Screen effects (Windows Terminal) | HLSL (WT shader interface) | `shaders/crt.hlsl`, `shaders/glow.hlsl` |
 | Shell integration | zsh alias + completion | `zshrc-snippet.zsh` |
 | Installer | Bash + curl | `install.sh` |
 
@@ -114,6 +117,8 @@ If no themes directory is found, the script exits with
 | `apply_to` | `apply_to <theme-file> <term-id>` | Set `$TF` and dispatch to the right adapter |
 | `apply_theme_cli` | `apply_theme_cli <theme-file> <scope>` | Build the target list, apply, then set the Ghostty effect |
 | `set_fx_ghostty` | `set_fx_ghostty crt\|glow\|off` | Rewrite the `custom-shader` line in the Ghostty config |
+| `set_fx_wt` | `set_fx_wt crt\|glow\|off` | Install the HLSL shader + set `pixelShaderPath` in Windows Terminal `settings.json` (falls back to `retroTerminalEffect` for `crt`) |
+| `set_default_wt` | `set_default_wt [name]` | Set Windows Terminal `defaultProfile` to a profile (defaults to `$WSL_DISTRO_NAME`, else first WSL profile) |
 
 `$TF` is the convention every adapter relies on: `apply_to` sets it to the
 resolved theme-file path, then calls `apply_<terminal>`, which reads its values
@@ -124,8 +129,9 @@ via `tget "$TF" <key>`.
 | Invocation | Handler |
 |------------|---------|
 | `retro-theme --detect` | prints `Detected: <ids|none>` |
+| `retro-theme --set-default [name]` | `set_default_wt` — set the Windows Terminal default profile |
 | `retro-theme -l` | lists `name [group]` for every `.conf` |
-| `retro-theme fx crt\|glow\|off` | sets effect on detected terminals |
+| `retro-theme fx crt\|glow\|off` | sets effect on detected terminals (Ghostty + Windows Terminal) |
 | `retro-theme <name> [--all]` | `apply_theme_cli` |
 | `retro-theme` (no args) | interactive numbered menu |
 
@@ -157,17 +163,33 @@ color15=#c0caf5
 | `background` / `foreground` / `cursor` | yes | Base colors, hex `#rrggbb` |
 | `color0` … `color15` | yes | The 16-color ANSI palette, hex `#rrggbb` |
 
-The 8 bundled themes:
+The 24 bundled themes (2 `retro`, 16 `futuristic`, 6 `paper`):
 
 | Name | Slug | Group | `fx` |
 |------|------|-------|------|
 | Retro Green | `retro-green` | retro | crt |
 | Amber CRT | `amber` | retro | crt |
+| Ayu Dark | `ayu-dark` | futuristic | glow |
+| Catppuccin Mocha | `catppuccin-mocha` | futuristic | glow |
+| Cyberpunk Neon | `cyberpunk-neon` | futuristic | glow |
 | Dracula | `dracula` | futuristic | glow |
-| Nord | `nord` | futuristic | glow |
-| Tokyo Night | `tokyo-night` | futuristic | glow |
+| Everforest Dark | `everforest-dark` | futuristic | off |
 | Gruvbox Dark | `gruvbox-dark` | futuristic | off |
+| Gruvbox Material Dark | `gruvbox-material-dark` | futuristic | off |
+| Kanagawa | `kanagawa` | futuristic | glow |
+| Monokai | `monokai` | futuristic | glow |
+| Night Owl | `night-owl` | futuristic | glow |
+| Nord | `nord` | futuristic | glow |
+| One Dark | `one-dark` | futuristic | glow |
+| Rosé Pine | `rose-pine` | futuristic | glow |
+| Solarized Dark | `solarized-dark` | futuristic | off |
+| SynthWave '84 | `synthwave-84` | futuristic | glow |
+| Tokyo Night | `tokyo-night` | futuristic | glow |
+| Ayu Light | `ayu-light` | paper | off |
+| Catppuccin Latte | `catppuccin-latte` | paper | off |
+| GitHub Light | `github-light` | paper | off |
 | Gruvbox Light | `gruvbox-light` | paper | off |
+| Rosé Pine Dawn | `rose-pine-dawn` | paper | off |
 | Solarized Light | `solarized-light` | paper | off |
 
 ---
@@ -180,7 +202,7 @@ The 8 bundled themes:
 | Terminal id | Detected when |
 |-------------|---------------|
 | `ghostty` | `TERM_PROGRAM=ghostty` **or** `TERM=xterm-ghostty` |
-| `windows-terminal` | `WT_SESSION` is non-empty |
+| `windows-terminal` | `WT_SESSION` is non-empty **or** `microsoft`/`wsl` in `/proc/version` (any WSL session) |
 | `gnome-terminal` | `GNOME_TERMINAL_SCREEN` is non-empty |
 | `terminator` | `TERMINATOR_UUID` is non-empty |
 | `kitty` | `KITTY_WINDOW_ID` non-empty **or** `TERM=xterm-kitty` |
@@ -215,14 +237,18 @@ Setting an effect (`retro-theme fx crt|glow|off`):
 1. validate mode ∈ {crt, glow, off}     (else usage error)
 2. export FX_MODE=mode
 3. for each detected terminal:
-     ghostty          → set_fx_ghostty(mode)            # rewrite custom-shader
-     windows-terminal → warn: re-apply a theme to toggle retroTerminalEffect
+     ghostty          → set_fx_ghostty(mode)            # rewrite custom-shader (.glsl)
+     windows-terminal → set_fx_wt(mode)                 # install .hlsl + set pixelShaderPath
      others           → warn: screen effects not supported (colors only)
 ```
 
-Key point: the Windows Terminal adapter reads `FX_MODE` (`retro=true` only when
-`FX_MODE == crt`), so the CRT toggle is decided **at theme-apply time**, not by
-the `fx` subcommand alone.
+`set_fx_wt` and the Windows Terminal theme adapter share the same logic: for a
+`crt`/`glow` mode they copy `$SHADERS_DIR/<mode>.hlsl` into the WT `LocalState`
+folder and point `pixelShaderPath` at it (via `wslpath -w`); if the `.hlsl` or
+`wslpath` is unavailable, `crt` falls back to `retroTerminalEffect = true` and
+`glow` is a no-op. `off` deletes `pixelShaderPath` and clears `retroTerminalEffect`.
+When applying a theme, the effect comes from `FX_MODE` (the theme's `fx=` unless
+overridden), so the effect is decided **at theme-apply time**.
 
 ---
 
@@ -244,9 +270,14 @@ target's native config. All are idempotent.
   `/mnt/c/Users/*/AppData/Local/Packages/Microsoft.WindowsTerminal*/LocalState/`
   or the unpackaged `.../Microsoft/Windows Terminal/` path.
 - Builds a color **scheme** object with `jq -n`, then patches the file: replaces
-  any same-named scheme, sets `profiles.defaults.colorScheme`, and sets
-  `profiles.defaults.experimental.retroTerminalEffect` to `true` iff
-  `FX_MODE == crt`.
+  any same-named scheme and sets `profiles.defaults.colorScheme`.
+- Screen effect (when `FX_MODE` is `crt`/`glow`): copies
+  `$SHADERS_DIR/<mode>.hlsl` to `<LocalState>/retro-shader.hlsl` and sets
+  `profiles.defaults.experimental.pixelShaderPath` to the Windows path
+  (`wslpath -w`). This produces the same rich CRT/glow effect as Ghostty. If the
+  `.hlsl` or `wslpath` is missing, `crt` falls back to
+  `experimental.retroTerminalEffect = true`. When no shader path is set, the
+  adapter deletes `pixelShaderPath`.
 
 ### `apply_gnome_terminal`
 - Requires `gsettings`.
@@ -314,10 +345,49 @@ pointing at `$SHADERS_DIR/crt.glsl` or `glow.glsl` (or nothing for `off`).
 Both are Shadertoy-style: `mainImage(out vec4 fragColor, in vec2 fragCoord)`
 sampling `iChannel0` (terminal contents) with `iResolution`/`iTime` available.
 
-### Windows Terminal
+### Windows Terminal (HLSL shaders)
 
-No shaders; it has a built-in `experimental.retroTerminalEffect`. The adapter
-turns it on only when the effective effect is `crt`.
+Windows Terminal supports a custom pixel shader via
+`profiles.defaults.experimental.pixelShaderPath`. Both `set_fx_wt` and
+`apply_windows_terminal` copy the matching `$SHADERS_DIR/<mode>.hlsl` into the WT
+`LocalState` folder (as `retro-shader.hlsl`) and set `pixelShaderPath` to its
+Windows path (computed with `wslpath -w`, e.g. `C:\...\retro-shader.hlsl`). This
+yields the **same CRT/glow look as Ghostty**.
+
+- **`shaders/crt.hlsl`** — barrel `curve()`, scanlines, phosphor column mask,
+  vignette, chromatic aberration, brightness lift; black outside the curved
+  screen.
+- **`shaders/glow.hlsl`** — 7×7 weighted bloom (neon halo), faint chromatic
+  aberration, soft vignette.
+
+The HLSL files use the Windows Terminal shader interface (not Shadertoy):
+
+```hlsl
+Texture2D    shaderTexture;
+SamplerState samplerState;
+cbuffer PixelShaderSettings {
+    float  Time;
+    float  Scale;
+    float2 Resolution;
+    float4 Background;
+};
+float4 main(float4 pos : SV_POSITION, float2 tex : TEXCOORD) : SV_TARGET { ... }
+```
+
+`shaderTexture`/`samplerState` sample the terminal contents; `Time`/`Resolution`
+drive the animated/size-aware effects.
+
+**Fallback:** if the `.hlsl` file or `wslpath` is unavailable, `crt` switches on
+the built-in `experimental.retroTerminalEffect` instead (and `glow` is a no-op).
+`off` removes `pixelShaderPath` and clears `retroTerminalEffect`.
+
+### Setting the default profile
+
+`set_default_wt [name]` (CLI: `--set-default`) sets WT's `defaultProfile`. It
+resolves a profile GUID by matching `name` (case-insensitive) against the profile
+list; with no name it defaults to `$WSL_DISTRO_NAME`, falling back to the first
+profile whose `source` matches `Wsl`. Patches `settings.json` with `jq` and asks
+you to reopen Windows Terminal.
 
 ### Everything else
 
@@ -332,8 +402,9 @@ No screen-effect support. `fx` emits
 (downloads each asset from `REPO_RAW`). Steps:
 
 1. Install `bin/retro-theme` → `~/.local/bin/retro-theme` (chmod +x).
-2. Install all 8 themes → `~/.config/retro-theme/themes/`.
-3. Install `crt.glsl` + `glow.glsl` → `~/.config/ghostty/shaders/`.
+2. Install all 24 themes → `~/.config/retro-theme/themes/`.
+3. Install shaders → `~/.config/ghostty/shaders/`: `crt.glsl` + `glow.glsl`
+   (Ghostty) and `crt.hlsl` + `glow.hlsl` (Windows Terminal).
 4. If `ghostty` is on `PATH`: back up any existing `~/.config/ghostty/config`
    (timestamped `.bak`) and install the sample `config`.
 5. Append the `rt` alias + zsh completion to `~/.zshrc` (guarded by a marker so

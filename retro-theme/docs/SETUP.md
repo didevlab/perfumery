@@ -5,8 +5,9 @@ whatever terminal you're running — from a fresh machine to a themed prompt.
 
 `retro-theme` detects your terminal from environment variables and themes it
 through that terminal's own config. The CRT/glow screen effect is applied only
-where the terminal supports it (Ghostty shaders, Windows Terminal's built-in
-retro effect); every other terminal gets the colors only.
+where the terminal supports it — real shaders on Ghostty (GLSL) and Windows
+Terminal (HLSL `pixelShaderPath`, with the built-in retro effect as a fallback);
+every other terminal gets the colors only.
 
 ## Table of Contents
 
@@ -69,8 +70,8 @@ cd perfumery/retro-theme
 | Target | Path |
 |--------|------|
 | `retro-theme` command | `~/.local/bin/retro-theme` |
-| Bundled themes | `~/.config/retro-theme/themes/*.conf` |
-| Ghostty shaders | `~/.config/ghostty/shaders/{crt,glow}.glsl` |
+| Bundled themes (24) | `~/.config/retro-theme/themes/*.conf` |
+| Shaders (GLSL + HLSL) | `~/.config/ghostty/shaders/{crt,glow}.glsl` and `{crt,glow}.hlsl` |
 | Ghostty config (only if Ghostty is installed) | `~/.config/ghostty/config` |
 | `rt` alias + zsh completion | appended to `~/.zshrc` |
 
@@ -79,7 +80,7 @@ cd perfumery/retro-theme
 ```bash
 source ~/.zshrc        # load the rt alias + completion
 retro-theme -l
-# Expected: a list of 8 themes, e.g.
+# Expected: a list of 24 themes, e.g.
 #   Retro Green        [retro]
 #   Amber CRT          [retro]
 #   Dracula            [futuristic]
@@ -113,7 +114,7 @@ Detection map (the script checks these variables):
 | Terminal | Detected when |
 |----------|---------------|
 | Ghostty | `TERM_PROGRAM=ghostty` or `TERM=xterm-ghostty` |
-| Windows Terminal | `WT_SESSION` is set |
+| Windows Terminal | `WT_SESSION` is set, **or** running under WSL (`microsoft`/`wsl` in `/proc/version`) |
 | GNOME Terminal | `GNOME_TERMINAL_SCREEN` is set |
 | Terminator | `TERMINATOR_UUID` is set |
 | kitty | `KITTY_WINDOW_ID` set or `TERM=xterm-kitty` |
@@ -174,23 +175,28 @@ retro-theme fx off     # remove the effect
 ```
 
 - **Ghostty** — `crt` and `glow` switch the `custom-shader` line in
-  `~/.config/ghostty/config`. Reload with `Ctrl+Shift+,`.
-- **Windows Terminal** — only the `crt` look exists (its built-in
-  `retroTerminalEffect`). It is written when you **apply a theme** whose effect
-  is `crt`; running `fx` just reminds you to re-apply.
+  `~/.config/ghostty/config` (pointing at `crt.glsl` / `glow.glsl`). Reload with
+  `Ctrl+Shift+,`.
+- **Windows Terminal** — `crt` and `glow` both work. `fx` copies the matching
+  `crt.hlsl` / `glow.hlsl` into the Windows Terminal `LocalState` folder and sets
+  `profiles.defaults.experimental.pixelShaderPath` (converted to a Windows path
+  with `wslpath -w`). If the `.hlsl` file or `wslpath` isn't available, `crt`
+  falls back to the built-in `retroTerminalEffect`. `fx off` removes the shader.
+  Reopen the tab to see it.
 - **All other terminals** — no shader support; you'll see
   `screen effects not supported (colors only)`.
 
-Expected output on Ghostty:
+Expected output:
 
 ```
 ==> Ghostty: effect=crt (reload: Ctrl+Shift+,)
+==> Windows Terminal: effect=glow (reopen the tab)
 ```
 
 Each theme also has a **default effect** (its `fx=` field): `retro-green` and
-`amber` default to `crt`; `dracula`, `nord`, `tokyo-night` default to `glow`;
-the rest default to `off`. Applying a theme uses that default unless you set one
-explicitly with `fx`.
+`amber` default to `crt`; most futuristic themes (e.g. `dracula`, `nord`,
+`tokyo-night`, `cyberpunk-neon`) default to `glow`; the rest default to `off`.
+Applying a theme uses that default unless you set one explicitly with `fx`.
 
 ---
 
@@ -217,8 +223,10 @@ retro-theme --detect
 # Expected: Detected: windows-terminal
 ```
 
-> `WT_SESSION` is only set inside Windows Terminal. If detection says `none`,
-> you're likely in the legacy `wsl.exe` console — open a Windows Terminal tab.
+> Any WSL session is treated as Windows Terminal (the tool detects `WT_SESSION`
+> or `microsoft`/`wsl` in `/proc/version`), so detection works even from a bare
+> `wsl.exe` console. The Windows-side `settings.json` still has to exist under
+> `/mnt/c/Users/<you>/...` for the patch to land.
 
 ### 6.3 Apply a theme
 
@@ -226,7 +234,7 @@ retro-theme --detect
 retro-theme "Amber CRT"
 # Expected:
 #   ==> Applying 'Amber CRT' to: windows-terminal
-#   ==> Windows Terminal: scheme 'Amber CRT' applied (retro effect: true)
+#   ==> Windows Terminal: scheme 'Amber CRT' + crt HLSL shader applied
 ```
 
 What this does under the hood:
@@ -234,22 +242,47 @@ What this does under the hood:
 - Locates `settings.json` under
   `/mnt/c/Users/<you>/AppData/Local/Packages/Microsoft.WindowsTerminal*/LocalState/settings.json`
   (or the unpackaged path under `.../Microsoft/Windows Terminal/settings.json`).
-- Uses `jq` to add/replace a color **scheme** named after the theme, set it as
-  the default profile's `colorScheme`, and toggle
-  `experimental.retroTerminalEffect` on when the theme's effect is `crt`.
+- Uses `jq` to add/replace a color **scheme** named after the theme and set it as
+  the default profile's `colorScheme`.
+- For a `crt`/`glow` effect, copies `crt.hlsl` / `glow.hlsl` into the Windows
+  Terminal `LocalState` folder (as `retro-shader.hlsl`) and sets
+  `profiles.defaults.experimental.pixelShaderPath` to its Windows path
+  (`wslpath -w`). This gives the **same rich CRT/glow look as Ghostty**
+  (curvature, scanlines, vignette, bloom). If the `.hlsl` or `wslpath` isn't
+  available, `crt` falls back to the built-in `experimental.retroTerminalEffect`
+  (then the line reads `... applied (retro effect: true)`).
 
 Because `Amber CRT` and `Retro Green` default to `crt`, they switch on the CRT
-vibe automatically. To force it on/off for the current theme:
+look automatically. To force an effect on/off for the current theme:
 
 ```bash
 retro-theme fx crt && retro-theme "Amber CRT"   # CRT on
-retro-theme fx off && retro-theme "Amber CRT"   # CRT off
+retro-theme fx glow && retro-theme dracula      # neon glow on
+retro-theme fx off && retro-theme "Amber CRT"   # effect off
+```
+
+### 6.4 Set the default Windows Terminal profile
+
+Make Windows Terminal open into your WSL distro by default:
+
+```bash
+retro-theme --set-default
+# Expected:
+#   ==> Windows Terminal: default profile set to '<distro>' (<guid>). Reopen Windows Terminal.
+```
+
+With no argument it targets the current distro (`$WSL_DISTRO_NAME`), falling back
+to the first WSL-sourced profile. Pass a name to pick a specific profile (matched
+case-insensitively against the profile name):
+
+```bash
+retro-theme --set-default "Ubuntu"
 ```
 
 ### Verify
 
-Open a new Windows Terminal tab — the colors and (for `crt`) the scanline effect
-should be live.
+Open a new Windows Terminal tab — the colors and (for `crt`/`glow`) the screen
+effect should be live.
 
 ---
 
@@ -258,7 +291,7 @@ should be live.
 ```bash
 # 1. The command resolves and lists themes
 retro-theme -l
-# Expected: 8 themes with their [group]
+# Expected: 24 themes with their [group]
 
 # 2. Your terminal is recognized
 retro-theme --detect
@@ -302,9 +335,15 @@ GNOME Terminal / Terminator: open a new window.
 Terminator once (or create the file) so a `[[default]]` profile exists, then
 re-apply.
 
-**Problem**: `fx glow` did nothing on a non-Ghostty terminal.
-**Solution**: Glow is Ghostty-only (it's a GLSL shader). Windows Terminal only
-supports `crt`; other terminals support no screen effect at all.
+**Problem**: `fx glow` did nothing on a non-Ghostty / non-WT terminal.
+**Solution**: Screen effects only exist on Ghostty (GLSL) and Windows Terminal
+(HLSL). Every other terminal gets the colors only.
+
+**Problem**: Windows Terminal shows no CRT/glow even though `fx` ran.
+**Solution**: The HLSL shader needs `wslpath` and the bundled `.hlsl` files
+(`~/.config/ghostty/shaders/{crt,glow}.hlsl`). Without them, `crt` falls back to
+the built-in `retroTerminalEffect` and `glow` does nothing. Re-run `install.sh`
+to restore the shaders, then `retro-theme fx crt|glow` and reopen the tab.
 
 ---
 
