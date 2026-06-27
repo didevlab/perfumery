@@ -17,7 +17,7 @@
 # the actual effect must be tested on the user's machine. Linux-only, experimental.
 set -euo pipefail
 
-REPO_RAW="https://raw.githubusercontent.com/didevlab/perfumery/main/crt-compositor"
+REPO_RAW="https://raw.githubusercontent.com/didevlab/perfumery/main/retro-theme/effects/compositor"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
 
 PICOM_DIR="$HOME/.config/picom"

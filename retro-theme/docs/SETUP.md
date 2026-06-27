@@ -9,6 +9,12 @@ where the terminal supports it — real shaders on Ghostty (GLSL) and Windows
 Terminal (HLSL `pixelShaderPath`, with the built-in retro effect as a fallback);
 every other terminal gets the colors only.
 
+`install.sh` is a **universal orchestrator**: it installs the core, then detects
+your OS/terminal and sets up the best CRT mechanism for you — Ghostty GLSL,
+Windows Terminal HLSL, a Linux **compositor** (`effects/compositor`, CRT on any
+terminal), or **cool-retro-term** (`effects/cool-retro-term`, a dedicated CRT
+terminal). See [Screen Effects (CRT / Glow)](#5-screen-effects-crt--glow).
+
 ## Table of Contents
 
 1. [Prerequisites](#1-prerequisites)
@@ -49,12 +55,16 @@ command -v jq && jq --version
 ## 2. Install
 
 The installer drops the command, palettes, shaders and the `rt` alias into your
-home directory. It is idempotent and backs up an existing Ghostty config.
+home directory, then orchestrates a CRT effect for your OS/terminal. It is
+idempotent and backs up an existing Ghostty config.
 
 ### Option A — Remote one-liner
 
 ```bash
 wget -qO- https://raw.githubusercontent.com/didevlab/perfumery/main/retro-theme/install.sh | bash
+
+# …or force the CRT mechanism (default is auto-detect):
+wget -qO- https://raw.githubusercontent.com/didevlab/perfumery/main/retro-theme/install.sh | bash -s -- --effect compositor
 ```
 
 ### Option B — From a checkout
@@ -63,7 +73,20 @@ wget -qO- https://raw.githubusercontent.com/didevlab/perfumery/main/retro-theme/
 git clone https://github.com/didevlab/perfumery.git
 cd perfumery/retro-theme
 ./install.sh
+./install.sh --effect cool-retro-term   # or: --no-effect
 ```
+
+### Effect selection
+
+The installer's CRT step is controlled by one flag (also available as the
+`RT_EFFECT` env var):
+
+| Value | Effect step |
+|-------|-------------|
+| `--effect auto` *(default)* | Detect the OS/terminal and pick the best mechanism (asks before touching a compositor) |
+| `--effect compositor` | Force the Linux compositor CRT — [`effects/compositor`](../effects/compositor/README.md) |
+| `--effect cool-retro-term` | Force the dedicated CRT terminal — [`effects/cool-retro-term`](../effects/cool-retro-term/README.md) |
+| `--effect none` / `--no-effect` | Skip the effect step entirely |
 
 ### What gets installed
 
@@ -74,6 +97,7 @@ cd perfumery/retro-theme
 | Shaders (GLSL + HLSL) | `~/.config/ghostty/shaders/{crt,glow}.glsl` and `{crt,glow}.hlsl` |
 | Ghostty config (only if Ghostty is installed) | `~/.config/ghostty/config` |
 | `rt` alias + zsh completion | appended to `~/.zshrc` |
+| CRT effect (chosen by detection / `--effect`) | via a sub-recipe under `effects/` — e.g. compositor config or cool-retro-term |
 
 ### Verify the install
 
@@ -165,8 +189,33 @@ Reload the terminal so it picks up the new colors:
 
 ## 5. Screen Effects (CRT / Glow)
 
-The screen effect is separate from the palette. It only applies where the
-terminal supports it:
+There are two layers here:
+
+1. **The orchestrator** (`install.sh`) picks a CRT *mechanism* for your machine.
+2. **`retro-theme fx`** toggles the effect on the shader-capable terminals
+   (Ghostty / Windows Terminal).
+
+### 5.1 The mechanism the installer chose
+
+During install the orchestrator detects your OS/terminal and wires up one of:
+
+| Environment | CRT mechanism | How to use it |
+|-------------|---------------|---------------|
+| WSL | Windows Terminal HLSL shader | `rt fx crt` (already wired) |
+| Ghostty installed | GLSL shader | `rt fx crt` |
+| Linux desktop, no Ghostty | compositor — picom (X11) / Hyprland (Wayland), CRT on **any** terminal | set up by [`effects/compositor`](../effects/compositor/README.md) during install |
+| Fallback (incl. macOS without Ghostty) | cool-retro-term — dedicated CRT terminal | launch `cool-retro-term` ([`effects/cool-retro-term`](../effects/cool-retro-term/README.md)) |
+
+In `--effect auto` (the default) the compositor path is **interactive**: the
+installer asks before changing your compositor config. A non-interactive run
+(piped from `wget`) prints the command instead. Force a path any time with
+`--effect compositor` or `--effect cool-retro-term`, or run the sub-recipe's own
+`install.sh` directly (each has its own `README.md` and `docs/`).
+
+### 5.2 Toggling the effect (`retro-theme fx`)
+
+On Ghostty and Windows Terminal, the effect is separate from the palette and you
+toggle it with:
 
 ```bash
 retro-theme fx crt     # CRT scanlines + curvature
@@ -183,8 +232,10 @@ retro-theme fx off     # remove the effect
   with `wslpath -w`). If the `.hlsl` file or `wslpath` isn't available, `crt`
   falls back to the built-in `retroTerminalEffect`. `fx off` removes the shader.
   Reopen the tab to see it.
-- **All other terminals** — no shader support; you'll see
-  `screen effects not supported (colors only)`.
+- **All other terminals** — `retro-theme fx` has no shader to toggle; you'll see
+  `screen effects not supported (colors only)`. For a CRT on these terminals use
+  the [compositor](../effects/compositor/README.md) recipe (Linux) or
+  [cool-retro-term](../effects/cool-retro-term/README.md).
 
 Expected output:
 
@@ -351,6 +402,9 @@ to restore the shaders, then `retro-theme fx crt|glow` and reopen the tab.
 
 - [ ] Add the `rt` alias to muscle memory: `rt <name>`, `rt fx crt`
 - [ ] Try `retro-theme <name> --all` to theme every terminal at once
+- [ ] Want a CRT on a non-shader terminal? Re-run with `--effect compositor`
+      (Linux, any terminal) or `--effect cool-retro-term` — see
+      [`effects/`](../effects/)
 - [ ] Tweak the Ghostty look in `~/.config/ghostty/config` (font size, cursor)
 - [ ] Create your own palette — see
       [TECHNICAL.md → Extending the System](TECHNICAL.md#10-extending-the-system)

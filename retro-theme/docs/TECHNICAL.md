@@ -31,6 +31,12 @@ writes the colors using the terminal's *own* native config mechanism. Screen
 effects (CRT/glow) are applied separately and only where the terminal supports
 them.
 
+`install.sh` is a **universal orchestrator** layered on top of the engine: it
+installs the core, then detects the OS/terminal and sets up the best CRT
+mechanism by reusing the self-contained sub-recipes under `effects/`
+(`effects/compositor` and `effects/cool-retro-term`). See
+[§9 Installer](#9-installer).
+
 | Component | Technology | File |
 |-----------|------------|------|
 | Engine + adapters | Bash 5 | `bin/retro-theme` |
@@ -398,8 +404,12 @@ No screen-effect support. `fx` emits
 
 ## 9. Installer
 
-`install.sh` works from a checkout (`cp` from `$SRC`) or piped via curl
-(downloads each asset from `REPO_RAW`). Steps:
+`install.sh` is a **universal orchestrator**. It works from a checkout (`cp` from
+`$SRC`, `bash` for sub-recipes) or piped via curl/wget (downloads each asset and
+sub-installer from `REPO_RAW`). It has two phases: install the **core**, then
+orchestrate a **CRT effect**.
+
+### 9.1 Core install (steps 1–7)
 
 1. Install `bin/retro-theme` → `~/.local/bin/retro-theme` (chmod +x).
 2. Install all 24 themes → `~/.config/retro-theme/themes/`.
@@ -409,11 +419,51 @@ No screen-effect support. `fx` emits
    (timestamped `.bak`) and install the sample `config`.
 5. Append the `rt` alias + zsh completion to `~/.zshrc` (guarded by a marker so
    it's added at most once).
-6. Warn if `~/.local/bin` is not on `PATH`.
-7. Warn if `jq` is missing (needed for Windows Terminal).
+6. Ensure `~/.local/bin` is on `PATH` (adds the export to the shell rc if missing).
+7. On WSL, ensure `jq` is installed (needed for the Windows Terminal adapter);
+   elsewhere just warn if it's absent.
 
-The installer is idempotent: re-running it overwrites assets and skips the
-already-present zsh snippet.
+### 9.2 Effect orchestration (step 8)
+
+The CRT effect is selected by `EFFECT`, read from `--effect <mode>` /
+`--effect=<mode>` / `--no-effect`, or the `RT_EFFECT` env var (default `auto`).
+Modes: `auto | compositor | cool-retro-term | none`.
+
+| `EFFECT` | Behavior |
+|----------|----------|
+| `none` | Skip the effect step. |
+| `compositor` | Run `effects/compositor/install.sh` (picom/Hyprland — any terminal). |
+| `cool-retro-term` | Run `effects/cool-retro-term/install.sh` (dedicated CRT terminal). |
+| `auto` *(default)* | Detect and choose — see below. |
+
+In `auto`, detection via `uname`, `is_wsl`, `command -v ghostty` and the session
+type (`XDG_SESSION_TYPE` / `WAYLAND_DISPLAY` / `DISPLAY` / `HYPRLAND_INSTANCE_SIGNATURE`):
+
+```
+auto:
+  WSL                         → "use Windows Terminal HLSL — run 'rt fx crt'" (already wired)
+  ghostty on PATH             → "use Ghostty GLSL — run 'rt fx crt'"
+  Linux + graphical session   → interactive (TTY): ask, then run effects/compositor/install.sh
+                                non-interactive   : print the command to run it
+  Linux, no session detected  → warn: install Ghostty or use --effect cool-retro-term
+  macOS (Darwin)              → warn: install Ghostty or use --effect cool-retro-term
+```
+
+Sub-installers are invoked by `run_sub`, which runs the local
+`effects/<recipe>/install.sh` from a checkout, or downloads it from `REPO_RAW`
+and runs it when piped. Each recipe under `effects/` is self-contained (its own
+`README.md` + `docs/SETUP.md` + `docs/TECHNICAL.md`) and can also be run on its
+own.
+
+The installer is idempotent: re-running it overwrites assets, skips the
+already-present zsh snippet, and the `effects/` sub-recipes never clobber an
+existing compositor rule or `~/.tmux.conf`.
+
+### Remote one-liner with a forced effect
+
+```bash
+wget -qO- <raw>/retro-theme/install.sh | bash -s -- --effect compositor
+```
 
 ---
 

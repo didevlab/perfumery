@@ -33,6 +33,11 @@ original target) is not installed.
   (HLSL `pixelShaderPath`): curvature, scanlines, vignette and bloom. Windows
   Terminal falls back to the built-in `retroTerminalEffect` if the HLSL shader
   can't be installed. Other terminals get the colors only.
+- **One universal installer** — `install.sh` installs the core, then detects your
+  OS/terminal and wires up the best CRT mechanism for you (Ghostty GLSL, Windows
+  Terminal HLSL, a Linux compositor, or cool-retro-term), reusing the
+  self-contained sub-recipes under [`effects/`](effects/). See
+  [Screen Effect (CRT)](#screen-effect-crt).
 - **24 bundled palettes** across 3 groups (`retro`, `futuristic`, `paper`).
 - **Apply everywhere at once** with `--all` — theme every supported terminal
   found on the machine in one shot.
@@ -71,9 +76,19 @@ original target) is not installed.
 # Remote one-liner
 wget -qO- https://raw.githubusercontent.com/didevlab/perfumery/main/retro-theme/install.sh | bash
 
+# pick the CRT mechanism explicitly (default: auto-detect)
+wget -qO- https://raw.githubusercontent.com/didevlab/perfumery/main/retro-theme/install.sh | bash -s -- --effect compositor
+
 # …or from a checkout
 ./install.sh
+./install.sh --effect cool-retro-term
 ```
+
+The installer is a **universal orchestrator**: it installs the core (command,
+themes, shaders, optional Ghostty config, `rt` alias), then detects your
+OS/terminal and sets up the best CRT effect. Control that step with
+`--effect auto|compositor|cool-retro-term|none` (default `auto`), `--no-effect`,
+or the `RT_EFFECT` env var — see [Screen Effect (CRT)](#screen-effect-crt).
 
 Then reload your shell and pick a theme:
 
@@ -165,18 +180,61 @@ override it with `retro-theme fx …`.
 | WezTerm | yes | — | writes `~/.config/wezterm/colors/<slug>.toml` |
 | iTerm2 (macOS) | yes | — | writes a Dynamic Profile JSON |
 
-> The CRT/glow **screen effect** exists on Ghostty (real GLSL shaders) and
-> Windows Terminal (real HLSL shaders via `pixelShaderPath`, with the built-in
-> `retroTerminalEffect` as a `crt` fallback). Every other terminal gets the
-> colors only.
+> The CRT/glow **screen effect** is built into the *colors* path on Ghostty (real
+> GLSL shaders) and Windows Terminal (real HLSL shaders via `pixelShaderPath`,
+> with the built-in `retroTerminalEffect` as a `crt` fallback). For terminals
+> without native shader support, the installer can still add a CRT via the Linux
+> **compositor** or **cool-retro-term** — see [Screen Effect (CRT)](#screen-effect-crt).
 
 ### Platforms
 
+One installer handles every OS — the CRT mechanism is chosen by detection
+(Ghostty GLSL / Windows Terminal HLSL / Linux compositor / cool-retro-term).
+
 | OS | Supported | Notes |
 |----|:---------:|-------|
-| **Linux** | yes | Native. Ghostty gets the full CRT/glow effect; all others get colors. |
+| **Linux** | yes | Native. Ghostty gets the GLSL CRT; without Ghostty the installer can set up a **compositor** CRT (`effects/compositor`, any terminal) or **cool-retro-term**; all terminals get the colors. |
 | **Windows** | yes (via WSL) | Run it inside WSL; it themes **Windows Terminal** (`settings.json` + HLSL shader). Native PowerShell/cmd is **not** supported (the tool is a bash script). |
-| **macOS** | yes | Runs on the system `bash` (3.2+) — no `mapfile`/GNU-only `sed`. Themes Ghostty, iTerm2, kitty, Alacritty, WezTerm. **Apple Terminal.app has no adapter.** |
+| **macOS** | yes | Runs on the system `bash` (3.2+) — no `mapfile`/GNU-only `sed`. Themes Ghostty, iTerm2, kitty, Alacritty, WezTerm. Without Ghostty, `--effect cool-retro-term` gives a guaranteed CRT. **Apple Terminal.app has no adapter.** |
+
+---
+
+## Screen Effect (CRT)
+
+`install.sh` is a **universal orchestrator**. After installing the core it detects
+your OS/terminal and sets up the best CRT mechanism, reusing the self-contained
+sub-recipes under [`effects/`](effects/):
+
+| Environment | CRT mechanism | Set up by | Turn on with |
+|-------------|---------------|-----------|--------------|
+| WSL | Windows Terminal HLSL shader | core (wired by `retro-theme`) | `rt fx crt` |
+| Ghostty installed | GLSL shader | core | `rt fx crt` |
+| Linux desktop, no Ghostty | compositor — picom (X11) / Hyprland (Wayland), CRT on **any** terminal | [`effects/compositor/install.sh`](effects/compositor/README.md) | runs during install |
+| Fallback (incl. macOS without Ghostty) | cool-retro-term — dedicated CRT terminal | [`effects/cool-retro-term/install.sh`](effects/cool-retro-term/README.md) | launch `cool-retro-term` |
+
+Choose the mechanism explicitly with `--effect auto|compositor|cool-retro-term|none`
+(default `auto`), `--no-effect`, or the `RT_EFFECT` env var. In `auto` mode the
+compositor path is **interactive** — the installer asks before changing your
+compositor config; a non-interactive run (e.g. piped from `wget`) just prints the
+command to run instead.
+
+```
+                detect OS / terminal
+                         │
+   ┌──────────┬──────────┼───────────────┬───────────────────┐
+   v          v          v               v                   v
+  WSL      Ghostty   Linux + no       (no detection)      --effect <mode>
+   │          │      Ghostty             │                forces the path
+   v          v          v               v
+ Windows    GLSL    effects/         effects/
+ Terminal  shader   compositor       cool-retro-term
+  HLSL    (rt fx)   (any terminal)   (dedicated CRT)
+```
+
+The `effects/` recipes are self-contained (each has its own README + `docs/`):
+
+- [`effects/compositor/`](effects/compositor/README.md) — CRT via the Linux compositor, terminal-independent (X11/picom per-window, Hyprland/Wayland whole-screen).
+- [`effects/cool-retro-term/`](effects/cool-retro-term/README.md) — a dedicated CRT terminal emulator (Linux/macOS); the CRT look is guaranteed regardless of shell or terminal.
 
 ---
 
@@ -249,7 +307,18 @@ retro-theme/
 │   └── glow.hlsl            # Windows Terminal: neon bloom
 ├── config                   # optional sample Ghostty config
 ├── zshrc-snippet.zsh        # rt alias + zsh completion
-├── install.sh               # installer (local or curl|bash)
+├── install.sh               # universal installer / orchestrator (local or curl|bash)
+├── effects/                 # CRT effect sub-recipes wired up by the orchestrator
+│   ├── compositor/          # CRT via the Linux compositor (picom X11 / Hyprland Wayland)
+│   │   ├── install.sh       #   self-contained installer
+│   │   ├── shaders/         #   picom-crt.glsl + hyprland-crt.frag
+│   │   ├── README.md
+│   │   └── docs/            #   SETUP.md + TECHNICAL.md
+│   └── cool-retro-term/     # dedicated CRT terminal emulator (Linux/macOS)
+│       ├── install.sh       #   self-contained installer
+│       ├── tmux.conf        #   bundled ~/.tmux.conf (tabs/splits)
+│       ├── README.md
+│       └── docs/            #   SETUP.md + TECHNICAL.md
 ├── README.md
 └── docs/
     ├── SETUP.md             # zero-to-running walkthrough

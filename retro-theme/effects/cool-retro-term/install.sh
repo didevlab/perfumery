@@ -21,7 +21,7 @@
 # Idempotent. Never clobbers an existing ~/.tmux.conf.
 set -euo pipefail
 
-REPO_RAW="https://raw.githubusercontent.com/didevlab/perfumery/main/cool-retro-term"
+REPO_RAW="https://raw.githubusercontent.com/didevlab/perfumery/main/retro-theme/effects/cool-retro-term"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
 TMUX_CONF="$HOME/.tmux.conf"
 
