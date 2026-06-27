@@ -170,6 +170,14 @@ override it with `retro-theme fx …`.
 > `retroTerminalEffect` as a `crt` fallback). Every other terminal gets the
 > colors only.
 
+### Platforms
+
+| OS | Supported | Notes |
+|----|:---------:|-------|
+| **Linux** | yes | Native. Ghostty gets the full CRT/glow effect; all others get colors. |
+| **Windows** | yes (via WSL) | Run it inside WSL; it themes **Windows Terminal** (`settings.json` + HLSL shader). Native PowerShell/cmd is **not** supported (the tool is a bash script). |
+| **macOS** | yes | Runs on the system `bash` (3.2+) — no `mapfile`/GNU-only `sed`. Themes Ghostty, iTerm2, kitty, Alacritty, WezTerm. **Apple Terminal.app has no adapter.** |
+
 ---
 
 ## Architecture
