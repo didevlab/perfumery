@@ -135,7 +135,7 @@ via `tget "$TF" <key>`.
 | Invocation | Handler |
 |------------|---------|
 | `retro-theme --detect` | prints `Detected: <ids|none>` |
-| `retro-theme --set-default [name]` | `set_default_wt` — set the Windows Terminal default profile |
+| `retro-theme --set-default [profile] [theme]` | `set_default_wt` — set the WT default profile + apply theme/effect to it |
 | `retro-theme -l` | lists `name [group]` for every `.conf` |
 | `retro-theme fx crt\|glow\|off` | sets effect on detected terminals (Ghostty + Windows Terminal) |
 | `retro-theme <name> [--all]` | `apply_theme_cli` |
@@ -389,10 +389,14 @@ the built-in `experimental.retroTerminalEffect` instead (and `glow` is a no-op).
 
 ### Setting the default profile
 
-`set_default_wt [name]` (CLI: `--set-default`) sets WT's `defaultProfile`. It
-resolves a profile GUID by matching `name` (case-insensitive) against the profile
-list; with no name it defaults to `$WSL_DISTRO_NAME`, falling back to the first
-profile whose `source` matches `Wsl`. Patches `settings.json` with `jq` and asks
+`set_default_wt [profile] [theme]` (CLI: `--set-default`) sets WT's
+`defaultProfile` and then re-applies the theme + effect to Windows Terminal. It
+resolves a profile GUID by matching `profile` (case-insensitive) against the
+profile list; with no profile it defaults to `$WSL_DISTRO_NAME`, falling back to
+the first profile whose `source` matches `Wsl`. The theme is taken from the
+second argument, or from the last-applied theme persisted in
+`~/.config/retro-theme/state` (written by `apply_theme_cli`/`fx`); it then calls
+`apply_windows_terminal` so the default profile comes up fully themed. Patches `settings.json` with `jq` and asks
 you to reopen Windows Terminal.
 
 ### Everything else

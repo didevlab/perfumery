@@ -312,23 +312,32 @@ retro-theme fx glow && retro-theme dracula      # neon glow on
 retro-theme fx off && retro-theme "Amber CRT"   # effect off
 ```
 
-### 6.4 Set the default Windows Terminal profile
+### 6.4 Set the default Windows Terminal profile (with theme + effect)
 
-Make Windows Terminal open into your WSL distro by default:
+Make Windows Terminal open into your WSL distro by default **and** paint that
+profile with your theme + effect in one step:
 
 ```bash
 retro-theme --set-default
 # Expected:
-#   ==> Windows Terminal: default profile set to '<distro>' (<guid>). Reopen Windows Terminal.
+#   ==> Windows Terminal: default profile set to '<distro>' (<guid>).
+#   ==> Windows Terminal: scheme '<theme>' + <fx> HLSL shader applied
+#   ==> Applied theme '<theme>' + effect '<fx>' to Windows Terminal.
+#   ==> Reopen Windows Terminal to see it.
 ```
 
-With no argument it targets the current distro (`$WSL_DISTRO_NAME`), falling back
-to the first WSL-sourced profile. Pass a name to pick a specific profile (matched
-case-insensitively against the profile name):
+With no arguments it targets the current distro (`$WSL_DISTRO_NAME`, falling back
+to the first WSL-sourced profile) and re-applies the **last theme you applied**
+(remembered in `~/.config/retro-theme/state`). Pass a profile and/or a theme
+explicitly:
 
 ```bash
-retro-theme --set-default "Ubuntu"
+retro-theme --set-default "Ubuntu"                 # specific profile, last theme
+retro-theme --set-default "Ubuntu" "Tokyo Night"   # specific profile + theme
 ```
+
+> If you haven't applied a theme yet, run `retro-theme <theme>` first so there's
+> something to paint the default profile with.
 
 ### Verify
 

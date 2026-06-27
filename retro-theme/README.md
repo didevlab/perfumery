@@ -111,7 +111,8 @@ retro-theme tokyo-night          # …or by slug (the .conf filename)
 retro-theme dracula --all        # apply to EVERY supported terminal found
 retro-theme -l                   # list bundled themes
 retro-theme --detect             # show which terminal was detected
-retro-theme --set-default        # set Windows Terminal default profile to this WSL distro
+retro-theme --set-default        # WT default profile = this WSL distro + last theme & effect
+retro-theme --set-default Debian "Tokyo Night"  # explicit profile + theme
 retro-theme fx crt               # set screen effect (Ghostty / Windows Terminal)
 retro-theme fx glow              # neon glow (Ghostty / Windows Terminal)
 retro-theme fx off               # remove the effect
@@ -125,7 +126,7 @@ rt nord                          # the rt alias works everywhere
 | `retro-theme <name> --all` | Apply to every supported terminal on the machine |
 | `retro-theme -l` | List bundled themes with their group |
 | `retro-theme --detect` | Print the detected terminal(s) |
-| `retro-theme --set-default [name]` | Set the Windows Terminal default profile (defaults to the current WSL distro) |
+| `retro-theme --set-default [profile] [theme]` | Set the Windows Terminal default profile (defaults to the current WSL distro) **and** paint it with the theme + effect (defaults to the last applied) |
 | `retro-theme fx crt\|glow\|off` | Set/clear the screen effect (Ghostty / Windows Terminal) |
 
 ---
